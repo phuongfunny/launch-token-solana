@@ -1,0 +1,6 @@
+const API_URL = import.meta.env.NEXT_PUBLIC_API_HOST;
+const SOL_WALLET = import.meta.env.NEXT_PUBLIC_SOL_ADDRESS;
+const SOL_NETWORK = import.meta.env.NEXT_PUBLIC_SOL_NETWORK;
+const COMMING_SOON = import.meta.env.NEXT_PUBLIC_MODE_COMMING_SOON;
+
+export { API_URL, SOL_WALLET, SOL_NETWORK, COMMING_SOON };
