@@ -19,8 +19,6 @@ import {
 } from "@solana/spl-token";
 import { Keypair, SystemProgram, Transaction } from "@solana/web3.js";
 import { toast } from "react-toastify";
-import { Buffer } from "buffer";
-window.Buffer = Buffer;
 
 export interface IDeployTokenPageProps {}
 
