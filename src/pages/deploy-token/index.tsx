@@ -1,9 +1,11 @@
 import {
+  AuthorityType,
   MINT_SIZE,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
   createInitializeMintInstruction,
   createMintToInstruction,
+  createSetAuthorityInstruction,
   getAssociatedTokenAddress,
   getMinimumBalanceForRentExemptMint,
 } from "@solana/spl-token";
@@ -19,14 +21,21 @@ import Input from "../../components/Form/Input";
 import Switch from "../../components/Form/Switch";
 import TextArea from "../../components/Form/TextArea";
 import { Wallet } from "../../components/Wallet";
+import { findMintMetadataId } from "@solana-nft-programs/common";
+import { createCreateMetadataAccountV3Instruction } from "@metaplex-foundation/mpl-token-metadata";
 
 export interface IDeployTokenPageProps {}
 
 type IFormCreateToken = {
   tokenName: string;
   symbol: string;
-  amount: number;
+  supply: number;
   decimals: number;
+  logoUrl?: string;
+  description?: string;
+  tags?: string[];
+  revokeMintAuth?: boolean;
+  revokeFreezeAuth?: boolean;
 };
 
 export default function DeployTokenPage() {
@@ -61,6 +70,32 @@ export default function DeployTokenPage() {
           mintKeypair.publicKey,
           publicKey
         );
+        const mintMetadataId = findMintMetadataId(mintKeypair.publicKey);
+
+        const metadataIx = createCreateMetadataAccountV3Instruction(
+          {
+            metadata: mintMetadataId,
+            updateAuthority: publicKey,
+            mint: mintKeypair.publicKey,
+            mintAuthority: publicKey,
+            payer: publicKey,
+          },
+          {
+            createMetadataAccountArgsV3: {
+              data: {
+                name: values.tokenName,
+                symbol: values.symbol,
+                uri: "https://cdn.paws.community/token/token.json",
+                sellerFeeBasisPoints: 0,
+                creators: null,
+                collection: null,
+                uses: null,
+              },
+              isMutable: true,
+              collectionDetails: null,
+            },
+          }
+        );
 
         const createNewTokenTransaction = new Transaction().add(
           SystemProgram.createAccount({
@@ -87,9 +122,31 @@ export default function DeployTokenPage() {
             mintKeypair.publicKey,
             tokenATA,
             publicKey,
-            values.amount * Math.pow(10, values.decimals)
-          )
+            values.supply * Math.pow(10, values.decimals)
+          ),
+          metadataIx
         );
+
+        if (values.revokeMintAuth) {
+          createNewTokenTransaction.add(
+            createSetAuthorityInstruction(
+              mintKeypair.publicKey,
+              publicKey,
+              AuthorityType.MintTokens,
+              null
+            )
+          );
+        }
+        if (values.revokeFreezeAuth) {
+          createNewTokenTransaction.add(
+            createSetAuthorityInstruction(
+              mintKeypair.publicKey,
+              publicKey,
+              AuthorityType.FreezeAccount,
+              null
+            )
+          );
+        }
 
         const result = await sendTransaction(
           createNewTokenTransaction,
@@ -108,7 +165,16 @@ export default function DeployTokenPage() {
   );
 
   const onSubmit = (data: any) => {
-    console.log(data);
+    const tokenData: IFormCreateToken = {
+      tokenName: data.name,
+      symbol: data.symbol,
+      decimals: Number(data.decimal),
+      supply: Number(data.supply),
+      revokeMintAuth: data.revokeMintAuth,
+      revokeFreezeAuth: data.revokeFreezeAuth,
+    };
+    console.log(tokenData);
+    onCreateToken(tokenData);
   };
 
   return (
@@ -121,17 +187,6 @@ export default function DeployTokenPage() {
           Easily create and mint your own SPL Token without coding. <br />
           Customize with metadata, supply, and add logo.
         </p>
-        <Button
-          onClick={() =>
-            onCreateToken({
-              tokenName: "SON",
-              symbol: "SON",
-              decimals: 6,
-              amount: 10,
-            })
-          }>
-          Deploy
-        </Button>
         <Wallet />
         <div className="flex w-full justify-between mt-8">
           {LIST_STEPS.map((item, index) => (
