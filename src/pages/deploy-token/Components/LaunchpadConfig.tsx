@@ -5,11 +5,7 @@ import { useFormContext } from "react-hook-form";
 export interface ILaunchpadConfigStepProps {}
 
 export default function LaunchpadConfigStep(props: ILaunchpadConfigStepProps) {
-  const {
-    watch,
-    register,
-    formState: { errors },
-  } = useFormContext();
+  const { watch, register } = useFormContext();
 
   const liqPool = React.useMemo(
     () => watch("step3.liqPool"),

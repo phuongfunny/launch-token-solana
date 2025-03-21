@@ -1,10 +1,10 @@
 import * as React from "react";
-import Input from "../../../components/Form/Input";
 import { Controller, useFormContext } from "react-hook-form";
-import TextArea from "../../../components/Form/TextArea";
-import Button from "../../../components/Button";
 import { IconSetting } from "../../../assets/Icons";
+import Button from "../../../components/Button";
+import Input from "../../../components/Form/Input";
 import Switch from "../../../components/Form/Switch";
+import TextArea from "../../../components/Form/TextArea";
 
 export interface IBasicInforStepProps {
   listTags: string[];
@@ -17,11 +17,7 @@ export default function BasicInforStep({
 }: IBasicInforStepProps) {
   const [tagValue, setTagValue] = React.useState<string>("");
 
-  const {
-    control,
-    register,
-    formState: { errors },
-  } = useFormContext();
+  const { control, register } = useFormContext();
 
   return (
     <>

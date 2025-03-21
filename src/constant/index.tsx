@@ -4,3 +4,10 @@ export const DEFAULT_ALLOCATION = {
   walletAddress: "",
   lockupPeriod: 0,
 };
+
+export const LIST_STEPS = [
+  { title: "Basic info" },
+  { title: "Government" },
+  { title: "Launchpad" },
+  { title: "Allocation" },
+];

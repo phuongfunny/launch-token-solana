@@ -1,23 +1,14 @@
 import * as React from "react";
-import Switch from "../../../components/Form/Switch";
-import Input from "../../../components/Form/Input";
 import { Controller, useFormContext } from "react-hook-form";
+import Input from "../../../components/Form/Input";
+import Switch from "../../../components/Form/Switch";
 
-export interface IGovernanceSettingStepProps {}
-
-export default function GovernanceSettingStep(
-  props: IGovernanceSettingStepProps
-) {
-  const {
-    control,
-    register,
-    watch,
-    formState: { errors },
-  } = useFormContext();
+export default function GovernanceSettingStep() {
+  const { control, register, watch } = useFormContext();
 
   const governanceSetting = React.useMemo(
-    () => watch("governanceSetting"),
-    [watch("governanceSetting")]
+    () => watch("step2.governanceSetting"),
+    [watch("step2.governanceSetting")]
   );
 
   return (
@@ -25,7 +16,7 @@ export default function GovernanceSettingStep(
       <div className="mt-4 flex gap-3">
         <p>Governance setting</p>
         <Controller
-          name="governanceSetting"
+          name="step2.governanceSetting"
           control={control}
           render={({ field }) => (
             <Switch label="" checked={field.value} onChange={field.onChange} />

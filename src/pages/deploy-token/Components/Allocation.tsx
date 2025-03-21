@@ -1,29 +1,42 @@
-import { useFieldArray, useFormContext } from "react-hook-form";
+import { useMemo } from "react";
+import { useFieldArray, useFormContext, useWatch } from "react-hook-form";
 import { IconDelete } from "../../../assets/Icons";
-import Input from "../../../components/Form/Input";
 import Button from "../../../components/Button";
+import Input from "../../../components/Form/Input";
 import { DEFAULT_ALLOCATION } from "../../../constant";
 
-export interface IAllocationStepProps {}
-
-export default function AllocationStep(props: IAllocationStepProps) {
-  const {
-    register,
-    formState: { errors },
-  } = useFormContext();
+export default function AllocationStep() {
+  const { register, setValue, control } = useFormContext();
 
   const { fields, append, remove } = useFieldArray({
+    control,
     name: "step4",
   });
-  console.log("🚀 ~ AllocationStep ~ fields:", fields);
+
+  const watchedItems = useWatch({ control, name: "step4" }) ?? [];
+
+  const handleChange = (index: number, value: number) => {
+    setValue(`step4.${index}.percentAllocate`, value, {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
+  };
+
+  const totalPercent = useMemo(() => {
+    return watchedItems.reduce((prev: number, next: any) => {
+      const percent = Number(next?.percentAllocate) || 0;
+      return prev + percent;
+    }, 0);
+  }, [watchedItems]);
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex justify-between">
         <p>Token Allocations</p>
-        <p>Remaining: 70%</p>
+        <p>Remaining: {100 - totalPercent}%</p>
       </div>
       <div className="w-full bg-[#0000001A] mt-[19px] h-[1px] mb-8"></div>
+
       {fields.map((allocateItem, index) => (
         <div
           key={allocateItem.id}
@@ -34,42 +47,36 @@ export default function AllocationStep(props: IAllocationStepProps) {
               <IconDelete />
             </div>
           </div>
-          <div className="flex gap-[23px] mb-6 ">
+          <div className="flex gap-[23px] mb-6">
             <Input
-              register={{
-                ...register(`step4.${index}.description`),
-              }}
-              label="Description ( Optional)"
+              register={register(`step4.${index}.description`)}
+              label="Description (Optional)"
               classBox="w-1/2"
               classInput="w-full h-10"
               placeholder="e.g Team"
             />
             <Input
-              register={{
-                ...register(`step4.${index}.percentAllocate`),
-              }}
-              label="Percentage: 30%"
+              register={register(`step4.${index}.percentAllocate`)}
+              label={`Percentage: ${
+                watchedItems?.[index]?.percentAllocate ?? 0
+              }%`}
               classBox="w-1/2"
               classInput="w-full h-10"
               placeholder="1%"
               type="number"
-              subCription="Allocated amount"
+              onChange={(e) => handleChange(index, Number(e.target.value))}
             />
           </div>
-          <div className="flex gap-[23px] mb-6 ">
+          <div className="flex gap-[23px] mb-6">
             <Input
-              register={{
-                ...register(`step4.${index}.walletAddress`),
-              }}
+              register={register(`step4.${index}.walletAddress`)}
               label="Wallet Address"
               classBox="w-1/2"
               classInput="w-full h-10"
               placeholder="Solana wallet address"
             />
             <Input
-              register={{
-                ...register(`step4.${index}.lockupPeriod`),
-              }}
+              register={register(`step4.${index}.lockupPeriod`)}
               label="Lockup Period (days)"
               classBox="w-1/2"
               classInput="w-full h-10"
@@ -79,6 +86,7 @@ export default function AllocationStep(props: IAllocationStepProps) {
           </div>
         </div>
       ))}
+
       <Button variant="default" onClick={() => append(DEFAULT_ALLOCATION)}>
         Add Allocate
       </Button>

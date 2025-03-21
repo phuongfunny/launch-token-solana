@@ -4,7 +4,7 @@ interface ButtonProps {
   children: React.ReactNode;
   variant?: "primary" | "secondary" | "danger" | "default";
   size?: "sm" | "md" | "lg";
-  onClick?: () => void;
+  onClick?: (e: any) => void;
   type?: "submit" | "button";
   disabled?: boolean;
 }
@@ -20,7 +20,7 @@ const Button: React.FC<ButtonProps> = ({
   const base = "rounded-lg font-semibold transition duration-300";
 
   const variants = {
-    default: "text-black border",
+    default: "text-black border hover:bg-black hover:text-white",
     primary: "bg-blue-500 text-white hover:bg-blue-600",
     secondary: "bg-gray-500 text-white hover:bg-gray-600",
     danger: "bg-red-500 text-white hover:bg-red-600",

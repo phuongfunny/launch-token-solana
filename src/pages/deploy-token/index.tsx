@@ -1,3 +1,6 @@
+import { yupResolver } from "@hookform/resolvers/yup";
+import { createCreateMetadataAccountV3Instruction } from "@metaplex-foundation/mpl-token-metadata";
+import { findMintMetadataId } from "@solana-nft-programs/common";
 import {
   AuthorityType,
   MINT_SIZE,
@@ -13,23 +16,17 @@ import { WalletNotConnectedError } from "@solana/wallet-adapter-base";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Keypair, SystemProgram, Transaction } from "@solana/web3.js";
 import { useCallback, useState } from "react";
-import { Controller, FormProvider, useForm } from "react-hook-form";
+import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "react-toastify";
-import { IconArrowRight, IconSetting } from "../../assets/Icons";
-import Button from "../../components/Button";
-import Input from "../../components/Form/Input";
-import Switch from "../../components/Form/Switch";
-import TextArea from "../../components/Form/TextArea";
-import { Wallet } from "../../components/Wallet";
-import { findMintMetadataId } from "@solana-nft-programs/common";
-import { createCreateMetadataAccountV3Instruction } from "@metaplex-foundation/mpl-token-metadata";
 import * as yup from "yup";
-import { yupResolver } from "@hookform/resolvers/yup";
+import { IconArrowRight } from "../../assets/Icons";
+import Button from "../../components/Button";
+import { Wallet } from "../../components/Wallet";
+import { DEFAULT_ALLOCATION, LIST_STEPS } from "../../constant";
+import AllocationStep from "./Components/Allocation";
 import BasicInforStep from "./Components/BasicInfor";
 import GovernanceSettingStep from "./Components/GovernanceSetting";
 import LaunchpadConfigStep from "./Components/LaunchpadConfig";
-import AllocationStep from "./Components/Allocation";
-import { DEFAULT_ALLOCATION } from "../../constant";
 
 export interface IDeployTokenPageProps {}
 
@@ -87,21 +84,14 @@ const schema = yup.object().shape({
   ),
 });
 
+export type FormData = yup.InferType<typeof schema>;
+
 export default function DeployTokenPage() {
-  const [tagValue, setTagValue] = useState<string>("");
   const [listTags, setListTags] = useState<string[]>([]);
   const [step, setStep] = useState(1);
-
   const { publicKey, sendTransaction, signTransaction } = useWallet();
 
-  const LIST_STEPS = [
-    { title: "Basic info" },
-    { title: "Government" },
-    { title: "Launchpad" },
-    { title: "Allocation" },
-  ];
-
-  const methods = useForm({
+  const methods = useForm<FormData>({
     resolver: yupResolver(schema),
     defaultValues: {
       step1: {
@@ -118,14 +108,17 @@ export default function DeployTokenPage() {
     },
   });
   const { connection } = useConnection();
-  console.log(methods.formState.errors);
 
-  const onNext = async () => {
+  const onNext = async (e: any) => {
     const isValid = await methods.trigger(`step${step}` as any);
-    console.log("🚀 ~ onNext ~ isValid:", isValid);
-    if (!isValid) return;
+    if (!isValid) {
+      toast.error(`Please check validation fields!`);
+      return;
+    }
     setStep((prev) => prev + 1);
+    e.preventDefault();
   };
+
   const onCreateToken = useCallback(
     async (values: IFormCreateToken) => {
       try {
@@ -222,31 +215,31 @@ export default function DeployTokenPage() {
           { signers: [mintKeypair] }
         );
         console.log("🚀 ~ result:", result);
-        if (result) {
-          toast.success(`🚀 Created token ${values.tokenName} Successfully!`);
-        }
+        toast.success(`🚀 Created token ${values.tokenName} Successfully!`);
       } catch (error) {
-        console.log("🚀 ~ onClick ~ error:", error);
+        toast.error(`Create token failed!`);
+        console.error("🚀 ~ onClick ~ error:", error);
       }
     },
     [publicKey, connection, signTransaction, sendTransaction]
   );
 
-  const onSubmit = (data: any) => {
+  const onSubmit = (data: FormData) => {
     const tokenData: IFormCreateToken = {
-      tokenName: data.name,
-      symbol: data.symbol,
-      decimals: Number(data.decimal),
-      supply: Number(data.supply),
-      revokeMintAuth: data.revokeMintAuth,
-      revokeFreezeAuth: data.revokeFreezeAuth,
+      tokenName: data.step1.name,
+      symbol: data.step1.symbol,
+      decimals: Number(data.step1.decimal),
+      supply: Number(data.step1.supply),
+      revokeMintAuth: data.step1.revokeMintAuth,
+      revokeFreezeAuth: data.step1.revokeFreezeAuth,
     };
-    console.log(tokenData);
-    onCreateToken(tokenData);
+    console.log("submit", tokenData);
+    // onCreateToken(tokenData);
   };
 
   return (
     <div className="max-w-screen-md px-11 py-14 m-auto">
+      <Wallet />
       <div className="flex flex-col">
         <h1 className="text-center text-4xl text-black font-bold">
           Token Deployer
@@ -255,7 +248,7 @@ export default function DeployTokenPage() {
           Easily create and mint your own SPL Token without coding. <br />
           Customize with metadata, supply, and add logo.
         </p>
-        <Wallet />
+
         <div className="flex w-full justify-between mt-8">
           {LIST_STEPS.map((item, index) => (
             <div className="flex gap-[10px]" key={index}>
@@ -283,15 +276,15 @@ export default function DeployTokenPage() {
             {step === 4 && <AllocationStep />}
             <div className="flex w-full justify-between items-center mt-4">
               {step > 1 && (
-                <Button type="button" onClick={() => setStep(step - 1)}>
+                <Button
+                  type="button"
+                  variant="default"
+                  onClick={() => setStep(step - 1)}>
                   Back
                 </Button>
               )}
-              {step < 5 ? (
-                <Button
-                  type="button"
-                  disabled={Object.keys(methods.formState.errors).length !== 0}
-                  onClick={onNext}>
+              {step < 4 ? (
+                <Button type="button" onClick={(e: any) => onNext(e)}>
                   Next
                 </Button>
               ) : (
