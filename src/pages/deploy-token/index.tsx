@@ -13,7 +13,7 @@ import { WalletNotConnectedError } from "@solana/wallet-adapter-base";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Keypair, SystemProgram, Transaction } from "@solana/web3.js";
 import { useCallback, useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, FormProvider, useForm } from "react-hook-form";
 import { toast } from "react-toastify";
 import { IconArrowRight, IconSetting } from "../../assets/Icons";
 import Button from "../../components/Button";
@@ -23,6 +23,13 @@ import TextArea from "../../components/Form/TextArea";
 import { Wallet } from "../../components/Wallet";
 import { findMintMetadataId } from "@solana-nft-programs/common";
 import { createCreateMetadataAccountV3Instruction } from "@metaplex-foundation/mpl-token-metadata";
+import * as yup from "yup";
+import { yupResolver } from "@hookform/resolvers/yup";
+import BasicInforStep from "./Components/BasicInfor";
+import GovernanceSettingStep from "./Components/GovernanceSetting";
+import LaunchpadConfigStep from "./Components/LaunchpadConfig";
+import AllocationStep from "./Components/Allocation";
+import { DEFAULT_ALLOCATION } from "../../constant";
 
 export interface IDeployTokenPageProps {}
 
@@ -38,9 +45,53 @@ type IFormCreateToken = {
   revokeFreezeAuth?: boolean;
 };
 
+const schema = yup.object().shape({
+  step1: yup.object({
+    name: yup.string().required("Name is required"),
+    symbol: yup.string().required("Symbol is required"),
+    decimal: yup.number().required("Decimal is required"),
+    supply: yup.number().required("Supply is required"),
+    logoUrl: yup.string(),
+    description: yup.string(),
+    revokeMintAuth: yup.boolean().required(),
+    revokeFreezeAuth: yup.boolean().required(),
+  }),
+  step2: yup.object({
+    governanceSetting: yup.boolean(),
+    votingThreshold: yup
+      .number()
+      .when("governanceSetting", (governanceSetting, schema) => {
+        return governanceSetting?.[0]
+          ? schema.required("This field is required")
+          : schema.nullable().notRequired();
+      }),
+    proposalDuration: yup.number().nullable().notRequired(),
+    excutionDelay: yup.number().nullable().notRequired(),
+    minToken: yup.number().nullable().notRequired(),
+  }),
+  step3: yup.object({
+    launchType: yup.string(),
+    price: yup.number().nullable().notRequired(),
+    maxPrice: yup.number().nullable().notRequired(),
+    targetAmount: yup.number().nullable().notRequired(),
+    periodDuring: yup.number().nullable().notRequired(),
+    liqPool: yup.number().nullable().notRequired(),
+  }),
+  step4: yup.array().of(
+    yup.object().shape({
+      description: yup.string(),
+      percentAllocate: yup.number(),
+      walletAddress: yup.string(),
+      lockupPeriod: yup.number(),
+    })
+  ),
+});
+
 export default function DeployTokenPage() {
-  const [enabled, setEnabled] = useState(false);
-  const [currentStep, setCurrentStep] = useState(1);
+  const [tagValue, setTagValue] = useState<string>("");
+  const [listTags, setListTags] = useState<string[]>([]);
+  const [step, setStep] = useState(1);
+
   const { publicKey, sendTransaction, signTransaction } = useWallet();
 
   const LIST_STEPS = [
@@ -50,14 +101,31 @@ export default function DeployTokenPage() {
     { title: "Allocation" },
   ];
 
-  const {
-    control,
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm();
+  const methods = useForm({
+    resolver: yupResolver(schema),
+    defaultValues: {
+      step1: {
+        revokeMintAuth: false,
+        revokeFreezeAuth: false,
+      },
+      step2: {
+        governanceSetting: false,
+      },
+      step3: {
+        liqPool: 0,
+      },
+      step4: [DEFAULT_ALLOCATION],
+    },
+  });
   const { connection } = useConnection();
+  console.log(methods.formState.errors);
 
+  const onNext = async () => {
+    const isValid = await methods.trigger(`step${step}` as any);
+    console.log("🚀 ~ onNext ~ isValid:", isValid);
+    if (!isValid) return;
+    setStep((prev) => prev + 1);
+  };
   const onCreateToken = useCallback(
     async (values: IFormCreateToken) => {
       try {
@@ -193,7 +261,7 @@ export default function DeployTokenPage() {
             <div className="flex gap-[10px]" key={index}>
               <div
                 className={`w-6 h-6 ${
-                  index === 0 ? "bg-black " : "bg-[#737373]"
+                  index + 1 <= step ? "bg-black " : "bg-[#737373]"
                 } text-white rounded-[50%] flex justify-center items-center text-sm`}>
                 {index + 1}
               </div>
@@ -205,118 +273,33 @@ export default function DeployTokenPage() {
           ))}
         </div>
         <div className="w-full bg-[#0000001A] mt-[19px] h-[1px] mb-8"></div>
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <div className="flex gap-[23px] mb-6 ">
-            <Input
-              register={{ ...register("name", { required: "Required" }) }}
-              label="Token Name (Max 30)"
-              classBox="w-1/2"
-              classInput="w-full h-10"
-              placeholder="$CGW"
-              required
-            />
-            <Input
-              register={{ ...register("symbol", { required: "Required" }) }}
-              label="Token Symbol (Max 10)"
-              classBox="w-1/2"
-              classInput="w-full h-10"
-              placeholder="$CGW"
-              required
-            />
-          </div>
-          <div className="flex gap-[23px] mb-6 ">
-            <Input
-              label="Decimals"
-              register={{ ...register("decimal", { required: "Required" }) }}
-              classBox="w-full"
-              classInput="w-full h-10"
-              placeholder="e.g 3"
-              type="number"
-              required
-              subCription="Change the number of decimals for your token"
-            />
-          </div>
-
-          <div className="flex gap-[23px] mb-6 ">
-            <Input
-              label="Supply"
-              register={{ ...register("supply", { required: "Required" }) }}
-              classBox="w-full"
-              classInput="w-full h-10"
-              placeholder="e.g 3"
-              type="number"
-              required
-              subCription="The initial number of available tokens that will be created in your wallet"
-            />
-          </div>
-          <div className="flex gap-[23px] mb-6 ">
-            <Input
-              register={{ ...register("logoUrl") }}
-              label="Logo (Optional)"
-              classBox="w-full"
-              classInput="w-full h-10"
-              placeholder="e.g 3"
-              subCription="Add logo for your token"
-            />
-          </div>
-
-          <div>
-            <TextArea
-              register={{
-                ...register("description"),
-              }}
-              label="Description (Optional)"
-              placeholder="Describe your token’s purpose"
-            />
-          </div>
-          <div className="flex flex-col gap-[16px] mt-6 mb-6">
-            <div className="flex gap-[16px] items-center">
-              <Input
-                label="Tag (Optional)"
-                classBox="w-full"
-                classInput="w-full h-10"
-                subCription="Select tags that are most associated with your project - max 3 tags"
-              />
-              <Button variant="primary" size="sm">
-                Add
-              </Button>
+        <FormProvider {...methods}>
+          <form onSubmit={methods.handleSubmit(onSubmit)}>
+            {step === 1 && (
+              <BasicInforStep setListTags={setListTags} listTags={listTags} />
+            )}
+            {step === 2 && <GovernanceSettingStep />}
+            {step === 3 && <LaunchpadConfigStep />}
+            {step === 4 && <AllocationStep />}
+            <div className="flex w-full justify-between items-center mt-4">
+              {step > 1 && (
+                <Button type="button" onClick={() => setStep(step - 1)}>
+                  Back
+                </Button>
+              )}
+              {step < 5 ? (
+                <Button
+                  type="button"
+                  disabled={Object.keys(methods.formState.errors).length !== 0}
+                  onClick={onNext}>
+                  Next
+                </Button>
+              ) : (
+                <Button type="submit">Deploy Token</Button>
+              )}
             </div>
-          </div>
-          <div className="flex gap-3">
-            <IconSetting />
-            <p className="font-bold">Additional settings</p>
-          </div>
-          <div className="flex flex-col gap-4 mt-4">
-            <Controller
-              name="revokeMintAuth"
-              control={control}
-              render={({ field }) => (
-                <Switch
-                  label="Revoke Mint Authority"
-                  checked={field.value}
-                  onChange={field.onChange}
-                />
-              )}
-            />
-            <Controller
-              name="revokeFreezeAuth"
-              control={control}
-              render={({ field }) => (
-                <Switch
-                  label="Revoke Freeze Authority"
-                  checked={field.value}
-                  onChange={field.onChange}
-                />
-              )}
-            />
-          </div>
-
-          <div className="flex w-full justify-center items-center mt-4">
-            <Button type="submit">
-              Next <IconArrowRight color="#fff" />
-            </Button>
-          </div>
-        </form>
+          </form>
+        </FormProvider>
       </div>
     </div>
   );

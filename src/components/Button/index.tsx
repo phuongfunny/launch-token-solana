@@ -2,10 +2,11 @@ import React from "react";
 
 interface ButtonProps {
   children: React.ReactNode;
-  variant?: "primary" | "secondary" | "danger";
+  variant?: "primary" | "secondary" | "danger" | "default";
   size?: "sm" | "md" | "lg";
   onClick?: () => void;
   type?: "submit" | "button";
+  disabled?: boolean;
 }
 
 const Button: React.FC<ButtonProps> = ({
@@ -14,10 +15,12 @@ const Button: React.FC<ButtonProps> = ({
   size = "md",
   onClick,
   type,
+  disabled = false,
 }) => {
   const base = "rounded-lg font-semibold transition duration-300";
 
   const variants = {
+    default: "text-black border",
     primary: "bg-blue-500 text-white hover:bg-blue-600",
     secondary: "bg-gray-500 text-white hover:bg-gray-600",
     danger: "bg-red-500 text-white hover:bg-red-600",
@@ -32,7 +35,8 @@ const Button: React.FC<ButtonProps> = ({
   return (
     <button
       type={type}
-      className={`${base} ${variants[variant]} ${sizes[size]} h-10 cursor-pointer flex items-center`}
+      disabled={disabled}
+      className={`${base} ${variants[variant]} ${sizes[size]} h-10 cursor-pointer flex items-center justify-center disabled:bg-gray-400 disabled:cursor-not-allowed`}
       onClick={onClick}>
       {children}
     </button>
