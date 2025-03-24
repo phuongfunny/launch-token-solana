@@ -16,7 +16,7 @@ export default function AllocationStep() {
   const watchedItems = useWatch({ control, name: "step4" }) ?? [];
 
   const handleChange = (index: number, value: number) => {
-    setValue(`step4.${index}.percentAllocate`, value, {
+    setValue(`step4.${index}.share`, value, {
       shouldValidate: true,
       shouldDirty: true,
     });
@@ -24,7 +24,7 @@ export default function AllocationStep() {
 
   const totalPercent = useMemo(() => {
     return watchedItems.reduce((prev: number, next: any) => {
-      const percent = Number(next?.percentAllocate) || 0;
+      const percent = Number(next?.share) || 0;
       return prev + percent;
     }, 0);
   }, [watchedItems]);
@@ -56,24 +56,24 @@ export default function AllocationStep() {
               placeholder="e.g Team"
             />
             <Input
-              register={register(`step4.${index}.percentAllocate`)}
-              label={`Percentage: ${
-                watchedItems?.[index]?.percentAllocate ?? 0
-              }%`}
+              register={register(`step4.${index}.share`)}
+              label={`Percentage: ${watchedItems?.[index]?.share ?? 0}%`}
               classBox="w-1/2"
               classInput="w-full h-10"
               placeholder="1%"
               type="number"
               onChange={(e) => handleChange(index, Number(e.target.value))}
+              required
             />
           </div>
           <div className="flex gap-[23px] mb-6">
             <Input
-              register={register(`step4.${index}.walletAddress`)}
+              register={register(`step4.${index}.address`)}
               label="Wallet Address"
               classBox="w-1/2"
               classInput="w-full h-10"
               placeholder="Solana wallet address"
+              required
             />
             <Input
               register={register(`step4.${index}.lockupPeriod`)}
@@ -82,6 +82,7 @@ export default function AllocationStep() {
               classInput="w-full h-10"
               placeholder="36"
               type="number"
+              required
             />
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { Idl } from "@coral-xyz/anchor";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { createCreateMetadataAccountV3Instruction } from "@metaplex-foundation/mpl-token-metadata";
 import { findMintMetadataId } from "@solana-nft-programs/common";
@@ -13,8 +14,16 @@ import {
   getMinimumBalanceForRentExemptMint,
 } from "@solana/spl-token";
 import { WalletNotConnectedError } from "@solana/wallet-adapter-base";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { Keypair, SystemProgram, Transaction } from "@solana/web3.js";
+import { useWallet } from "@solana/wallet-adapter-react";
+import {
+  Keypair,
+  PublicKey,
+  SYSVAR_RENT_PUBKEY,
+  SystemProgram,
+  Transaction,
+  TransactionInstruction,
+} from "@solana/web3.js";
+import { BN } from "bn.js";
 import { useCallback, useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "react-toastify";
@@ -23,10 +32,15 @@ import { IconArrowRight } from "../../assets/Icons";
 import Button from "../../components/Button";
 import { Wallet } from "../../components/Wallet";
 import { DEFAULT_ALLOCATION, LIST_STEPS } from "../../constant";
+import idlBondingCurve from "../../contracts/IDLs/bonding_curve.json";
+import useAnchorProvider from "../../hooks/useAnchorProvider";
+import { getPDAs } from "../../utils";
 import AllocationStep from "./Components/Allocation";
 import BasicInforStep from "./Components/BasicInfor";
 import GovernanceSettingStep from "./Components/GovernanceSetting";
 import LaunchpadConfigStep from "./Components/LaunchpadConfig";
+
+export type BondingCurve = Idl & typeof idlBondingCurve;
 
 export interface IDeployTokenPageProps {}
 
@@ -35,11 +49,27 @@ type IFormCreateToken = {
   symbol: string;
   supply: number;
   decimals: number;
-  logoUrl?: string;
+  image?: string;
   description?: string;
   tags?: string[];
   revokeMintAuth?: boolean;
   revokeFreezeAuth?: boolean;
+  walletRevokeMinAuth?: string;
+  walletRevokeFreezeAuthority?: string;
+};
+
+type IRecepient = {
+  description?: string;
+  share: number;
+  address: string;
+  lockupPeriod: number;
+};
+
+type IInitialCurveConfig = {
+  targetLiquidity: number;
+  liquidityLockPeriod: number;
+  liquidityPoolPercentage: number;
+  recepitients: IRecepient[];
 };
 
 const schema = yup.object().shape({
@@ -52,6 +82,20 @@ const schema = yup.object().shape({
     description: yup.string(),
     revokeMintAuth: yup.boolean().required(),
     revokeFreezeAuth: yup.boolean().required(),
+    walletRevokeMinAuth: yup
+      .string()
+      .when("revokeMintAuth", (revokeMintAuth, schema) => {
+        return revokeMintAuth?.[0]
+          ? schema.required("This field is required")
+          : schema;
+      }),
+    walletRevokeFreezeAuthority: yup
+      .string()
+      .when("revokeFreezeAuth", (revokeFreezeAuth, schema) => {
+        return revokeFreezeAuth?.[0]
+          ? schema.required("This field is required")
+          : schema.nullable().notRequired();
+      }),
   }),
   step2: yup.object({
     governanceSetting: yup.boolean(),
@@ -67,19 +111,19 @@ const schema = yup.object().shape({
     minToken: yup.number().nullable().notRequired(),
   }),
   step3: yup.object({
-    launchType: yup.string(),
-    price: yup.number().nullable().notRequired(),
-    maxPrice: yup.number().nullable().notRequired(),
-    targetAmount: yup.number().nullable().notRequired(),
-    periodDuring: yup.number().nullable().notRequired(),
-    liqPool: yup.number().nullable().notRequired(),
+    launchType: yup.string().required(),
+    price: yup.number().required(),
+    maxPrice: yup.number().required(),
+    targetLiquidity: yup.number().required(),
+    liquidityLockPeriod: yup.number().required(),
+    liquidityPoolPercentage: yup.number().required(),
   }),
   step4: yup.array().of(
     yup.object().shape({
       description: yup.string(),
-      percentAllocate: yup.number(),
-      walletAddress: yup.string(),
-      lockupPeriod: yup.number(),
+      share: yup.number().required(),
+      address: yup.string().required(),
+      lockupPeriod: yup.number().required(),
     })
   ),
 });
@@ -89,7 +133,10 @@ export type FormData = yup.InferType<typeof schema>;
 export default function DeployTokenPage() {
   const [listTags, setListTags] = useState<string[]>([]);
   const [step, setStep] = useState(1);
-  const { publicKey, sendTransaction, signTransaction } = useWallet();
+  const walletSol = useWallet();
+  const { publicKey, sendTransaction, signTransaction } = walletSol;
+  const { anchorWallet, program, governanceKeypair, connection, mintKeypair } =
+    useAnchorProvider();
 
   const methods = useForm<FormData>({
     resolver: yupResolver(schema),
@@ -102,38 +149,104 @@ export default function DeployTokenPage() {
         governanceSetting: false,
       },
       step3: {
-        liqPool: 0,
+        liquidityPoolPercentage: 0,
       },
       step4: [DEFAULT_ALLOCATION],
     },
   });
-  const { connection } = useConnection();
 
-  const onNext = async (e: any) => {
-    const isValid = await methods.trigger(`step${step}` as any);
-    if (!isValid) {
-      toast.error(`Please check validation fields!`);
+  const feeRecipient3 = Keypair.generate();
+
+  const onLaunchToken = (
+    data: IInitialCurveConfig,
+    feePool: PublicKey,
+    curveConfig: PublicKey
+  ) => {
+    if (!anchorWallet?.publicKey || !publicKey) {
+      toast.error("⚠️ Wallet is not ready! Please connect wallet.");
       return;
     }
-    setStep((prev) => prev + 1);
-    e.preventDefault();
+    const feePercentage = new BN(100);
+    const initialQuorum = new BN(500);
+    const daoQuorum = new BN(500);
+    const bondingCurveType = 1;
+    const maxTokenSupply = new BN(10000000000);
+
+    const recipients = data.recepitients.map((item) => ({
+      share: item.share * 100,
+      address: feeRecipient3.publicKey,
+      lockingPeriod: new BN(item.lockupPeriod),
+      amount: new BN(0),
+    }));
+
+    // let recipients = [
+    //   {
+    //     address: feeRecipient3.publicKey,
+    //     share: 10000, //percent * 100
+    //     amount: new BN(0),
+    //     lockingPeriod: new BN(60000),
+    //   },
+    // ];
+
+    return (
+      program.methods
+        // @ts-ignore
+        .initialize(
+          initialQuorum,
+          feePercentage,
+          new BN(data.targetLiquidity),
+          governanceKeypair.publicKey,
+          daoQuorum,
+          bondingCurveType,
+          maxTokenSupply,
+          new BN(data.liquidityLockPeriod),
+          new BN(data.liquidityPoolPercentage),
+          recipients
+        )
+        .accounts({
+          // @ts-ignore
+          configurationAccount: curveConfig,
+          admin: publicKey,
+          tokenMint: mintKeypair.publicKey,
+          feePoolAccount: feePool,
+          rent: SYSVAR_RENT_PUBKEY,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([walletSol as any])
+        .instruction()
+    );
   };
 
   const onCreateToken = useCallback(
-    async (values: IFormCreateToken) => {
+    async (values: IFormCreateToken, initCurveConfig: IInitialCurveConfig) => {
       try {
-        if (!publicKey || !signTransaction) {
-          throw new WalletNotConnectedError();
+        if (!anchorWallet?.publicKey || !publicKey || !signTransaction) {
+          toast.error("⚠️ Wallet is not ready!");
+          return;
         }
+
         const lamports = await getMinimumBalanceForRentExemptMint(connection);
-        const mintKeypair = Keypair.generate();
         const tokenATA = await getAssociatedTokenAddress(
           mintKeypair.publicKey,
           publicKey
         );
+
+        const { curveConfig, feePool } = await getPDAs(
+          anchorWallet?.publicKey,
+          mintKeypair.publicKey,
+          program
+        );
+
+        const accountInfo = await connection.getAccountInfo(curveConfig);
+        if (accountInfo !== null) {
+          toast.error(
+            "⚠️ Configuration account already exists, skipping initialization!"
+          );
+          return;
+        }
         const mintMetadataId = findMintMetadataId(mintKeypair.publicKey);
 
-        const metadataIx = createCreateMetadataAccountV3Instruction(
+        const metadataInstruction = createCreateMetadataAccountV3Instruction(
           {
             metadata: mintMetadataId,
             updateAuthority: publicKey,
@@ -156,6 +269,12 @@ export default function DeployTokenPage() {
               collectionDetails: null,
             },
           }
+        );
+
+        const curveConfigIns = await onLaunchToken(
+          initCurveConfig,
+          feePool,
+          curveConfig
         );
 
         const createNewTokenTransaction = new Transaction().add(
@@ -185,29 +304,31 @@ export default function DeployTokenPage() {
             publicKey,
             values.supply * Math.pow(10, values.decimals)
           ),
-          metadataIx
+          metadataInstruction
         );
 
-        if (values.revokeMintAuth) {
+        if (values.revokeMintAuth && values.walletRevokeMinAuth) {
           createNewTokenTransaction.add(
             createSetAuthorityInstruction(
               mintKeypair.publicKey,
               publicKey,
               AuthorityType.MintTokens,
-              null
+              new PublicKey(values.walletRevokeMinAuth)
             )
           );
         }
-        if (values.revokeFreezeAuth) {
+        if (values.revokeFreezeAuth && values.walletRevokeFreezeAuthority) {
           createNewTokenTransaction.add(
             createSetAuthorityInstruction(
               mintKeypair.publicKey,
               publicKey,
               AuthorityType.FreezeAccount,
-              null
+              new PublicKey(values.walletRevokeFreezeAuthority)
             )
           );
         }
+
+        createNewTokenTransaction.add(curveConfigIns as TransactionInstruction);
 
         const result = await sendTransaction(
           createNewTokenTransaction,
@@ -224,17 +345,41 @@ export default function DeployTokenPage() {
     [publicKey, connection, signTransaction, sendTransaction]
   );
 
-  const onSubmit = (data: FormData) => {
-    const tokenData: IFormCreateToken = {
-      tokenName: data.step1.name,
-      symbol: data.step1.symbol,
-      decimals: Number(data.step1.decimal),
-      supply: Number(data.step1.supply),
-      revokeMintAuth: data.step1.revokeMintAuth,
-      revokeFreezeAuth: data.step1.revokeFreezeAuth,
-    };
-    console.log("submit", tokenData);
-    // onCreateToken(tokenData);
+  const onSubmit = async (data: FormData) => {
+    const totalPercentAllocation =
+      data.step4?.reduce((prev, next) => prev + +next.share, 0) ?? 0;
+
+    if (totalPercentAllocation !== 100) {
+      toast.error("The total allocation percentage must be equal to 100!");
+      return;
+    }
+    try {
+      const tokenData: IFormCreateToken = {
+        tokenName: data.step1.name,
+        symbol: data.step1.symbol,
+        decimals: Number(data.step1.decimal),
+        supply: Number(data.step1.supply),
+        revokeMintAuth: data.step1.revokeMintAuth,
+        revokeFreezeAuth: data.step1.revokeFreezeAuth,
+        walletRevokeFreezeAuthority: data.step1.walletRevokeFreezeAuthority,
+        walletRevokeMinAuth: data.step1.walletRevokeMinAuth,
+      };
+      const inforInit: IInitialCurveConfig = {
+        ...data.step3,
+        recepitients: data.step4 ?? [],
+      };
+      await onCreateToken(tokenData, inforInit);
+    } catch (error) {}
+  };
+
+  const onNext = async (e: any) => {
+    e.preventDefault();
+    const isValid = await methods.trigger(`step${step}` as any);
+    if (!isValid) {
+      toast.error(`Please check validation fields!`);
+      return;
+    }
+    setStep((prev) => prev + 1);
   };
 
   return (

@@ -17,7 +17,15 @@ export default function BasicInforStep({
 }: IBasicInforStepProps) {
   const [tagValue, setTagValue] = React.useState<string>("");
 
-  const { control, register } = useFormContext();
+  const { watch, control, register } = useFormContext();
+  const isRevokeMintAuth = React.useMemo(
+    () => watch("step1.revokeMintAuth"),
+    [watch("step1.revokeMintAuth")]
+  );
+  const isRevokeFreezeAuth = React.useMemo(
+    () => watch("step1.revokeFreezeAuth"),
+    [watch("step1.revokeFreezeAuth")]
+  );
 
   return (
     <>
@@ -151,6 +159,17 @@ export default function BasicInforStep({
             />
           )}
         />
+        {isRevokeMintAuth && (
+          <Input
+            register={{ ...register("step1.walletRevokeMinAuth") }}
+            label="Wallet Adress"
+            classBox="w-full"
+            classInput="w-full h-10"
+            placeholder="Wallet Adress"
+            subCription="Wallet Adress For Revoke Mint Auth"
+            required
+          />
+        )}
         <Controller
           name="step1.revokeFreezeAuth"
           control={control}
@@ -162,6 +181,17 @@ export default function BasicInforStep({
             />
           )}
         />
+        {isRevokeFreezeAuth && (
+          <Input
+            register={{ ...register("step1.walletRevokeFreezeAuthority") }}
+            label="Wallet Adress"
+            classBox="w-full"
+            classInput="w-full h-10"
+            placeholder="Wallet Adress"
+            subCription="Wallet Adress For Revoke Freeze Authority"
+            required
+          />
+        )}
       </div>
     </>
   );
